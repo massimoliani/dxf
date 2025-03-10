@@ -10,6 +10,8 @@ export default class Helper {
     if (!(typeof contents === 'string')) {
       throw Error('Helper constructor expects a DXF string')
     }
+    console.log("Modified version");
+
     this._contents = contents
     this._parsed = null
     this._denormalised = null
@@ -52,8 +54,8 @@ export default class Helper {
     return this._groups
   }
 
-  toSVG() {
-    return toSVG(this.parsed)
+  toSVG(parsed = null) {
+    return toSVG(parsed ?? this.parsed)
   }
 
   toPolylines() {

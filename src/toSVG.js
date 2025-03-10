@@ -1,4 +1,5 @@
-import { Box2 } from 'vecks'
+import { Box2, Line2 } from 'vecks'
+import * as turf from "@turf/turf";
 
 import entityToPolyline from './entityToPolyline'
 import denormalise from './denormalise'
@@ -8,6 +9,25 @@ import rotate from './util/rotate'
 import rgbToColorAttribute from './util/rgbToColorAttribute'
 import toPiecewiseBezier, { multiplicity } from './util/toPiecewiseBezier'
 import transformBoundingBoxAndElement from './util/transformBoundingBoxAndElement'
+
+const extraEntity = (entity) => {
+  let ret = "";
+
+  ret += `id="entity-${entity.handle}" `;
+  if (entity.extraData != null) {
+    if (entity.extraData.cssClass) {
+      ret += `class="${entity.extraData.cssClass}" `;
+    }
+    if (entity.extraData.fill) {
+      ret += `fill="${entity.extraData.fill}" `;
+    }
+    if (entity.extraData.groupId) {
+      ret += `data-group="${entity.extraData.groupId}" `;
+    }
+  }
+
+  return ret.trim();
+}
 
 const addFlipXIfApplicable = (entity, { bbox, element }) => {
   if (entity.extrusionZ === -1) {
@@ -28,6 +48,9 @@ const addFlipXIfApplicable = (entity, { bbox, element }) => {
  * Create a <path /> element. Interpolates curved entities.
  */
 const polyline = (entity) => {
+  /*if (entity.handle.includes("303A8")) {
+    console.log("entity:", entity);
+  }*/
   const vertices = entityToPolyline(entity)
   const bbox = vertices.reduce(
     (acc, [x, y]) => acc.expandByPoint({ x, y }),
@@ -41,7 +64,7 @@ const polyline = (entity) => {
   // Empirically it appears that flipping horzontally does not apply to polyline
   return transformBoundingBoxAndElement(
     bbox,
-    `<path d="${d}" />`,
+    `<path ${extraEntity(entity)} d="${d}" />`,
     entity.transforms,
   )
 }
@@ -59,7 +82,7 @@ const circle = (entity) => {
       x: entity.x - entity.r,
       y: entity.y - entity.r,
     })
-  const element0 = `<circle cx="${entity.x}" cy="${entity.y}" r="${entity.r}" />`
+  const element0 = `<circle ${extraEntity(entity)} cx="${entity.x}" cy="${entity.y}" r="${entity.r}" />`
   const { bbox, element } = addFlipXIfApplicable(entity, {
     bbox: bbox0,
     element: element0,
@@ -80,6 +103,7 @@ const ellipseOrArc = (
   startAngle,
   endAngle,
   flipX,
+  entity,
 ) => {
   const rx = Math.sqrt(majorX * majorX + majorY * majorY)
   const ry = axisRatio * rx
@@ -102,10 +126,9 @@ const ellipseOrArc = (
   ) {
     // Use a native <ellipse> when start and end angles are the same, and
     // arc paths with same start and end points don't render (at least on Safari)
-    const element = `<g transform="rotate(${
-      (rotationAngle / Math.PI) * 180
-    } ${cx}, ${cy})">
-      <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" />
+    const element = `<g transform="rotate(${(rotationAngle / Math.PI) * 180
+      } ${cx}, ${cy})">
+      <ellipse ${extraEntity(entity)} cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" />
     </g>`
     return { bbox, element }
   } else {
@@ -134,9 +157,8 @@ const ellipseOrArc = (
     const adjustedEndAngle =
       endAngle < startAngle ? endAngle + Math.PI * 2 : endAngle
     const largeArcFlag = adjustedEndAngle - startAngle < Math.PI ? 0 : 1
-    const d = `M ${startPoint.x} ${startPoint.y} A ${rx} ${ry} ${
-      (rotationAngle / Math.PI) * 180
-    } ${largeArcFlag} 1 ${endPoint.x} ${endPoint.y}`
+    const d = `M ${startPoint.x} ${startPoint.y} A ${rx} ${ry} ${(rotationAngle / Math.PI) * 180
+      } ${largeArcFlag} 1 ${endPoint.x} ${endPoint.y}`
     const element = `<path d="${d}" />`
     return { bbox, element }
   }
@@ -232,6 +254,8 @@ const ellipse = (entity) => {
     entity.axisRatio,
     entity.startAngle,
     entity.endAngle,
+    false,
+    entity,
   )
   const { bbox, element } = addFlipXIfApplicable(entity, {
     bbox: bbox0,
@@ -253,6 +277,7 @@ const arc = (entity) => {
     entity.startAngle,
     entity.endAngle,
     entity.extrusionZ === -1,
+    entity,
   )
   const { bbox, element } = addFlipXIfApplicable(entity, {
     bbox: bbox0,
@@ -291,9 +316,116 @@ const bezier = (entity) => {
   const k = entity.degree + 1
   const piecewise = toPiecewiseBezier(k, entity.controlPoints, entity.knots)
   const paths = piecewiseToPaths(k, piecewise.knots, piecewise.controlPoints)
-  const element = `<g>${paths.join('')}</g>`
+  const element = `<g ${extraEntity(entity)} >${paths.join('')}</g>`
   return transformBoundingBoxAndElement(bbox, element, entity.transforms)
 }
+
+/**
+ * Create a <text /> element for the TEXT entity.
+ */
+const text = (entity) => {
+  // console.log("==> DXF: ", entity);
+
+  const bbox0 = new Box2();
+  let textLength = "";
+  let textTransform = "";
+
+  if (entity.handle.toString() === "30385BA") {
+    console.log("found");
+  }
+
+  /*
+  if (entity.x2 != null && entity.y2 != null && false) {
+    const line = new Line2({ x: entity.x, y: entity.y }, { x: entity.x2, y: entity.y2 });
+    const angle = turf.angle([entity.x2, entity.y], [entity.x, entity.y], [entity.x2, entity.y2]);
+    textLength = `textLength="${line.length()}"`;
+    textRotate = `transform="rotate(${angle},${entity.x},${entity.y})"`
+    bbox0.expandByPoint({
+      x: entity.x,
+      y: entity.y,
+    })
+      .expandByPoint({
+        x: entity.x + line.length(),
+        y: entity.y + entity.textHeight,
+      });
+  } else {
+   */
+  textTransform = `translate(${entity.x},${entity.y}) scale(1,-1) translate(${-entity.x},${-entity.y})`;
+  if (entity.rotation) {
+    textTransform += ` rotate(${-entity.rotation},${entity.x},${entity.y})`;
+  }
+  bbox0.expandByPoint({
+    x: entity.x,
+    y: entity.y,
+  })
+    .expandByPoint({
+      x: entity.x + entity.string.length * entity.textHeight,
+      y: entity.y + entity.textHeight,
+    });
+  // }
+
+  const element0 = `<text ${extraEntity(entity)} fill="${entity.extraData.rgb}" stroke-width="0" font-size="${entity.textHeight}" x="${entity.x}" y="${entity.y}" ${textLength} transform="${textTransform}">${entity.string}</text>`;
+
+  const { bbox, element } = addFlipXIfApplicable(entity, {
+    bbox: bbox0,
+    element: element0,
+  })
+  return transformBoundingBoxAndElement(bbox, element, entity.transforms)
+}
+
+const mtext = (entity) => {
+  // console.log("==> DXF: ", entity);
+
+  const bbox0 = new Box2();
+  let textLength = "";
+  let textTransform = "";
+
+  if (entity.handle.toString() === "303ACAA") {
+    console.log("found");
+  }
+
+  /*
+  if (entity.x2 != null && entity.y2 != null && false) {
+    const line = new Line2({ x: entity.x, y: entity.y }, { x: entity.x2, y: entity.y2 });
+    const angle = turf.angle([entity.x2, entity.y], [entity.x, entity.y], [entity.x2, entity.y2]);
+    textLength = `textLength="${line.length()}"`;
+    textRotate = `transform="rotate(${angle},${entity.x},${entity.y})"`
+    bbox0.expandByPoint({
+      x: entity.x,
+      y: entity.y,
+    })
+      .expandByPoint({
+        x: entity.x + line.length(),
+        y: entity.y + entity.textHeight,
+      });
+  } else {
+   */
+  if (entity.refRectangleWidth) {
+    textLength = `textLength="${entity.refRectangleWidth}"`
+  }
+  textTransform = `translate(${entity.x},${entity.y}) scale(1,-1) translate(${-entity.x},${-entity.y})`;
+  if (entity.rotation) {
+    textTransform += ` rotate(${-entity.rotation},${entity.x},${entity.y})`;
+  }
+  bbox0.expandByPoint({
+    x: entity.x,
+    y: entity.y,
+  })
+    .expandByPoint({
+      x: entity.x + entity.refRectangleWidth ?? (entity.string.length * entity.nominalTextHeight),
+      y: entity.y + entity.nominalTextHeight,
+    });
+  // }
+
+  const element0 = `<text ${extraEntity(entity)} fill="${entity.extraData.rgb}" stroke-width="0" font-size="${entity.nominalTextHeight}" x="${entity.x}" y="${entity.y}" ${textLength} transform="${textTransform}">${entity.string}</text>`;
+
+  const { bbox, element } = addFlipXIfApplicable(entity, {
+    bbox: bbox0,
+    element: element0,
+  })
+  return transformBoundingBoxAndElement(bbox, element, entity.transforms)
+}
+
 
 /**
  * Switcth the appropriate function on entity type. CIRCLE, ARC and ELLIPSE
@@ -301,6 +433,10 @@ const bezier = (entity) => {
  */
 const entityToBoundsAndElement = (entity) => {
   switch (entity.type) {
+    case 'TEXT':
+      return text(entity)
+    case 'MTEXT':
+      return mtext(entity)
     case 'CIRCLE':
       return circle(entity)
     case 'ELLIPSE':
@@ -334,7 +470,14 @@ export default (parsed) => {
   const entities = denormalise(parsed)
   const { bbox, elements } = entities.reduce(
     (acc, entity, i) => {
-      const rgb = getRGBForEntity(parsed.tables.layers, entity)
+      let rgb = getRGBForEntity(parsed.tables.layers, entity);
+      rgb = rgbToColorAttribute(rgb);
+      entity.extraData = entity.extraData ?? {};
+      if (entity.extraData.rgb === undefined) {
+        entity.extraData.rgb = rgb;
+      } else {
+        rgb = entity.extraData.rgb;
+      }
       const boundsAndElement = entityToBoundsAndElement(entity)
       // Ignore entities like MTEXT that don't produce SVG elements
       if (boundsAndElement) {
@@ -344,9 +487,13 @@ export default (parsed) => {
           acc.bbox.expandByPoint(bbox.min)
           acc.bbox.expandByPoint(bbox.max)
         }
-        acc.elements.push(
-          `<g stroke="${rgbToColorAttribute(rgb)}">${element}</g>`,
-        )
+        if (entity.type !== "TEXT" && entity.type !== "MTEXT") {
+          acc.elements.push(
+            `<g stroke="${rgb}">${element}</g>`,
+          )
+        } else {
+          acc.elements.push(element);
+        }
       }
       return acc
     },
@@ -358,18 +505,21 @@ export default (parsed) => {
 
   const viewBox = bbox.valid
     ? {
-        x: bbox.min.x,
-        y: -bbox.max.y,
-        width: bbox.max.x - bbox.min.x,
-        height: bbox.max.y - bbox.min.y,
-      }
+      x: bbox.min.x,
+      y: -bbox.max.y,
+      width: bbox.max.x - bbox.min.x,
+      height: bbox.max.y - bbox.min.y,
+    }
     : {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-      }
-  return `<?xml version="1.0"?>
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    }
+
+  return {
+    viewBox: viewBox,
+    text: `<?xml version="1.0"?>
 <svg
   xmlns="http://www.w3.org/2000/svg"
   xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"
@@ -377,8 +527,10 @@ export default (parsed) => {
   viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}"
   width="100%" height="100%"
 >
-  <g stroke="#000000" stroke-width="0.1%" fill="none" transform="matrix(1,0,0,-1,0,0)">
+  <g stroke="#000000" fill="none" transform="matrix(1,0,0,-1,0,0)">
     ${elements.join('\n')}
   </g>
 </svg>`
+  };
+
 }

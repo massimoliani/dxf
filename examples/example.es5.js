@@ -4,7 +4,7 @@ const join = require('path').join
 const Helper = require('..').Helper
 
 const helper = new Helper(
-  fs.readFileSync('./test/resources/Ceco.NET-Architecture-Tm-53.dxf', 'utf-8'),
+  fs.readFileSync('../test/resources/texts.dxf', 'utf-8'),
 )
 
 // The parsed entities

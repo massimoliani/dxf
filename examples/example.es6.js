@@ -1,7 +1,7 @@
 import fs from 'fs'
 import { join } from 'path'
 
-import { Helper } from '../src'
+import { Helper } from '../src/Helper.js'
 
 const helper = new Helper(
   fs.readFileSync('./test/resources/Ceco.NET-Architecture-Tm-53.dxf', 'utf-8'),
